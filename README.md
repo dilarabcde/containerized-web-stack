@@ -54,13 +54,6 @@ Stop the stack:
 docker compose down
 ```
 
-## Learning Notes
-
-Detailed lab notes are stored separately:
-
-- [Day 6 - Docker Fundamentals](docs/day-06-docker-fundamentals/README.md)
-- [Day 7 - Multi-Container Stack](docs/day-07-multi-container-stack/README.md)
-
 ## Current Focus
 
 This project is being developed incrementally to understand how containerized applications, databases, networking, persistent storage, and service orchestration work together.
