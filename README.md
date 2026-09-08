@@ -244,3 +244,198 @@ The next stages of this project will introduce multiple services and persistent 
 - Application-to-database communication
 
 The goal is to evolve this single-container application into a complete multi-container web stack.
+
+## Day 7 – PostgreSQL, Docker Networking, Volumes & Compose
+
+Today I extended the project from a single-container Flask application into a multi-container web stack with PostgreSQL.
+
+### What I Built
+
+- Added a PostgreSQL 16 database container
+- Connected Flask to PostgreSQL using environment variables
+- Used Docker networking for container-to-container communication
+- Used Docker DNS with `DB_HOST=db`
+- Added a named volume for PostgreSQL persistence
+- Migrated the manual `docker run` setup to Docker Compose
+- Added a PostgreSQL healthcheck
+- Used `depends_on` with `condition: service_healthy`
+- Tested container lifecycle and persistent data behavior
+- Practiced troubleshooting with YAML, healthcheck, logs, and container state
+
+### Architecture
+
+```text
+Client (Mac)
+     |
+     | localhost:8080
+     v
++------------------+
+|     web-app      |
+|      Flask       |
+|      :8080       |
++--------+---------+
+         |
+         | DB_HOST=db
+         | PostgreSQL :5432
+         v
++------------------+
+|        db        |
+|  PostgreSQL 16   |
++--------+---------+
+         |
+         v
++------------------+
+|  postgres-data   |
+|   Docker Volume  |
++------------------+
+```
+
+### Docker Networking
+
+The Flask and PostgreSQL containers communicate over the Docker Compose network.
+
+The application connects to PostgreSQL using:
+
+```text
+DB_HOST=db
+DB_PORT=5432
+```
+
+The service name `db` is resolved by Docker's internal DNS, so the application does not need to know the database container's IP address.
+
+The PostgreSQL port does not need to be published to the host because communication between the application and the database happens inside the Docker network.
+
+### Persistent Storage
+
+PostgreSQL stores its data in the named volume:
+
+```text
+postgres-data
+```
+
+Mounted to:
+
+```text
+/var/lib/postgresql/data
+```
+
+The database container was deleted and recreated during testing. The `notes` table and its data remained available because the data lifecycle was separated from the container lifecycle.
+
+```text
+Container lifecycle != Data lifecycle
+```
+
+### Docker Compose
+
+The stack was initially started using separate `docker run` commands.
+
+The complete system is now described in `compose.yaml` and can be started with:
+
+```bash
+docker compose up -d
+```
+
+Checked with:
+
+```bash
+docker compose ps
+```
+
+And stopped with:
+
+```bash
+docker compose down
+```
+
+### Healthcheck
+
+PostgreSQL readiness is checked using:
+
+```text
+pg_isready -U appuser -d appdb -p 5432
+```
+
+The Flask service waits until PostgreSQL becomes healthy before starting.
+
+```text
+Container running != Service healthy
+```
+
+A container process can be running while the service inside it is not ready to accept connections.
+
+### Troubleshooting
+
+Several failures were intentionally tested.
+
+#### YAML Syntax Error
+
+A malformed healthcheck definition caused Compose to fail while parsing `compose.yaml`.
+
+The configuration was checked using:
+
+```bash
+docker compose config
+```
+
+This showed that configuration errors must be fixed before investigating container or application behavior.
+
+#### Unhealthy Database
+
+The PostgreSQL healthcheck was intentionally configured to use port `9999` instead of `5432`.
+
+The database container was running but marked as unhealthy, and the web application did not start because it depended on a healthy database.
+
+The issue was investigated using:
+
+```bash
+docker compose ps
+docker inspect containerized-web-stack-db-1
+docker compose logs db
+```
+
+The healthcheck output showed:
+
+```text
+/var/run/postgresql:9999 - no response
+```
+
+while the PostgreSQL logs showed that the database was correctly listening on port `5432`.
+
+After correcting the healthcheck port, PostgreSQL became healthy and the web application started successfully.
+
+### Verification
+
+The full stack was tested with:
+
+```bash
+curl http://localhost:8080
+```
+
+The successful response confirmed the complete request flow:
+
+```text
+Mac
+ ↓
+localhost:8080
+ ↓
+Flask container
+ ↓
+Docker DNS
+ ↓
+PostgreSQL container
+ ↓
+Database response
+```
+
+### Key Lessons
+
+- A Dockerfile defines how an image is built.
+- Docker Compose defines how multiple containers work together.
+- Docker service names can be used as DNS hostnames.
+- Environment variables provide runtime configuration.
+- Named volumes keep persistent data outside the container lifecycle.
+- `docker compose down` removes containers and networks but does not automatically remove external named volumes.
+- A running container is not necessarily a healthy service.
+- Healthchecks are useful for determining service readiness.
+- `depends_on` can be combined with health status to control startup dependencies.
+- Troubleshooting should move through configuration, container state, healthcheck, logs, networking, and application behavior.
