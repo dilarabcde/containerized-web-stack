@@ -11,18 +11,22 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 
+def get_db_connection():
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+
 @app.route("/")
 def home():
     try:
-        connection = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
-
+        connection = get_db_connection()
         cursor = connection.cursor()
+
         cursor.execute("SELECT version();")
         db_version = cursor.fetchone()[0]
 
@@ -42,6 +46,33 @@ def home():
             "database": "connection failed",
             "error": str(error)
         }, 500
+
+
+@app.route("/health")
+def health():
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("SELECT 1;")
+        cursor.fetchone()
+
+        cursor.close()
+        connection.close()
+
+        return {
+            "status": "healthy",
+            "application": "running",
+            "database": "connected"
+        }, 200
+
+    except Exception as error:
+        return {
+            "status": "unhealthy",
+            "application": "running",
+            "database": "connection failed",
+            "error": str(error)
+        }, 503
 
 
 if __name__ == "__main__":
